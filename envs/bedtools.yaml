@@ -1,0 +1,9 @@
+name: bedtools
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - bedtools=2.30
+  - datamash=1.7
+  - htslib=1.14

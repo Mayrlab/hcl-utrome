@@ -1,0 +1,16 @@
+name: bioc_3_14
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - r-base=4.1
+  - r-tidyverse
+  - bioconductor-cleanupdtseq=1.32
+  - bioconductor-rtracklayer=1.54
+  - bioconductor-biocparallel=1.28
+  - bioconductor-bsgenome.hsapiens.ucsc.hg38=1.4
+  - bioconductor-genomicfeatures=1.46
+  - bioconductor-plyranges=1.14
+  - bioconductor-txcutr=1.0
+  - openssl <2

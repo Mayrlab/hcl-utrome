@@ -1,0 +1,8 @@
+name: pear
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - pear=0.9.6
+  - htslib=1.14

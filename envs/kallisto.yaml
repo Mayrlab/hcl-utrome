@@ -1,0 +1,6 @@
+name: kallisto
+channels:
+  - merv
+  - conda-forge
+dependencies:
+  - merv::kallisto=0.46.2sq

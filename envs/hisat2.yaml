@@ -1,0 +1,9 @@
+name: hisat2
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - hisat2=2.2.1
+  - samtools=1.14
+  - htslib=1.14
