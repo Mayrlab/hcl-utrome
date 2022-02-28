@@ -25,9 +25,9 @@ rule all:
 #        expand("data/bam/hisat2/{sample_id}.assembled.bam",
 #               sample_id=samples_subset),
         expand("data/kdx/utrome.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.kdx",
-               epsilon=[3], threshold=[10,200], version=[39], tpm=[3], likelihood=[0.9999], width=[500]),
+               epsilon=[3,5,10], threshold=[10,100,200,1000], version=[39], tpm=[3], likelihood=[0.9999], width=[500]),
         expand("data/gff/utrome.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.m{merge}.tsv",
-               epsilon=[3], threshold=[10,200], version=[39], tpm=[3], likelihood=[0.9999], width=[500], merge=[200])
+               epsilon=[3,5,10], threshold=[10,100,200,1000], version=[39], tpm=[3], likelihood=[0.9999], width=[500], merge=[200])
 
 rule download_fastq:
     output:
