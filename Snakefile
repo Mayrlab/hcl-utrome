@@ -22,12 +22,19 @@ message("[INFO] Loading samples list...")
 with open(config['samplesFile']) as f:
     samples_subset = f.read().splitlines()
 message("[INFO] Found %d sample IDs." % len(samples_subset))
-# samples_subset = metadata.index
+
+message("[INFO] Loading celltypes-samples list...")
+celltype_sample_map = pd.read_csv(config['celltypesSamplesFile'])
+message("[INFO] Found %d celltypes." % celltype_sample_map.celltype_id.nunique())
+message("[INFO] Found %d celltype-sample pairs." % len(celltype_sample_map))
+
 
 rule all:
     input:
         expand("data/bam/samples/{sample_id}.tagged.bam",
-               sample_id=samples_subset)
+               sample_id=samples_subset),
+        expand("data/bam/celltypes/{celltype_id}.bam",
+               celltype_id=list(celltype_sample_map.celltype_id.unique()))
         # expand("data/kdx/utrome.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.kdx",
         #        epsilon=[3,5,10], threshold=[10,100,200,1000], version=[39], tpm=[3], likelihood=[0.9999], width=[500]),
         # expand("data/gff/utrome.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.m{merge}.tsv",
@@ -199,9 +206,57 @@ rule tag_bx_umi:
         samtools index {output.bam}
         """
 
-#rule bam_sample_to_celltype:
-#    output:
-        
+rule extract_celltype_sample_bxs:
+    input:
+        tsv=config['annotsFile']
+    output:
+        bxs="data/barcodes/celltypes/{cluster_id}-{celltype}/{cluster_id}-{celltype}.{sample_id}.bxs.txt"
+    wildcard_constraints:
+        cluster_id="\d+",
+        celltype="[^.]+",
+        sample_id="[^.]+(\.\d+)?"
+    shell:
+        """
+        gzip -cd {input.tsv} |\\
+          awk '{{ if ($2 ~ /^{wildcards.sample_id}$/ && $7 ~ /^{wildcards.cluster_id}$/) print $3 }}' > {output.bxs}
+        """
+
+rule filter_celltype_sample:
+    input:
+        bam="data/bam/samples/{sample_id}.tagged.bam",
+        bxs="data/barcodes/celltypes/{cluster_id}-{celltype}/{cluster_id}-{celltype}.{sample_id}.bxs.txt"
+    output:
+        bam=temp("data/bam/celltypes/{cluster_id}-{celltype}/{cluster_id}-{celltype}.{sample_id}.bam")
+    wildcard_constraints:
+        cluster_id="\d+",
+        celltype="[^.]+",
+        sample_id="[^.]+(\.\d+)?"
+    conda: "envs/hisat2.yaml"
+    shell:
+        """
+        samtools view -D CB:{input.bxs} -o {output.bam} {input.bam}
+        """
+
+def get_celltype_samples (wcs):
+    return expand("data/bam/celltypes/{celltype_id}/{celltype_id}.{sample_id}.bam",
+                  celltype_id=wcs.celltype_id,
+                  sample_id=celltype_sample_map.sample_id[celltype_sample_map.celltype_id == wcs.celltype_id])
+    
+rule merge_celltype_samples:
+    input:
+        bams=get_celltype_samples
+    output:
+        bam="data/bam/celltypes/{celltype_id}.bam",
+        bai="data/bam/celltypes/{celltype_id}.bam.bai"
+    wildcard_constraints:
+        celltype_id="\d+-[^.]+"
+    conda: "envs/hisat2.yaml"
+    shell:
+        """
+        samtools merge -o {output.bam} {input.bams}
+        samtools index {output.bam}
+        """
+
 rule cleavage_coverage:
     input:
         "data/bam/celltypes/{sample_id}.assembled.bam"
