@@ -18,16 +18,20 @@ message("[INFO] Loading metadata...")
 metadata = pd.read_csv(config['metadataFile'], usecols=["sample_id", "Run"], index_col="sample_id")
 message("[INFO] Found %d SRA runs." % len(metadata.index))
 
-samples_subset = metadata.index
+message("[INFO] Loading samples list...")
+with open(config['samplesFile']) as f:
+    samples_subset = f.read().splitlines()
+message("[INFO] Found %d sample IDs." % len(samples_subset))
+# samples_subset = metadata.index
 
 rule all:
     input:
-#        expand("data/bam/hisat2/{sample_id}.assembled.bam",
-#               sample_id=samples_subset),
-        expand("data/kdx/utrome.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.kdx",
-               epsilon=[3,5,10], threshold=[10,100,200,1000], version=[39], tpm=[3], likelihood=[0.9999], width=[500]),
-        expand("data/gff/utrome.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.m{merge}.tsv",
-               epsilon=[3,5,10], threshold=[10,100,200,1000], version=[39], tpm=[3], likelihood=[0.9999], width=[500], merge=[200])
+        expand("data/bam/samples/{sample_id}.tagged.bam",
+               sample_id=samples_subset)
+        # expand("data/kdx/utrome.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.kdx",
+        #        epsilon=[3,5,10], threshold=[10,100,200,1000], version=[39], tpm=[3], likelihood=[0.9999], width=[500]),
+        # expand("data/gff/utrome.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.m{merge}.tsv",
+        #        epsilon=[3,5,10], threshold=[10,100,200,1000], version=[39], tpm=[3], likelihood=[0.9999], width=[500], merge=[200])
 
 rule download_fastq:
     output:
@@ -55,18 +59,19 @@ rule download_fastq:
         rm $tmp_r1 $tmp_r2
         """
 
+ruleorder: merge_subsamples > pear_merge
 rule pear_merge:
     input:
         r1="data/fastq/raw/{sample_id}_R1.fastq.gz",
         r2="data/fastq/raw/{sample_id}_R2.fastq.gz"
     output:
-        r12=temp("data/fastq/assembled/{sample_id}.assembled.fastq.gz")
+        r12="data/fastq/assembled/{sample_id}.assembled.fastq.gz"
     params:
         tmpdir=config['tmpdir'] + "/pear",
         min_length=54+21,
         max_pval=0.0001
     conda: "envs/pear.yaml"
-    threads: 24
+    threads: 12
     resources:
         mem_mb=1000
     shell:
@@ -80,25 +85,40 @@ rule pear_merge:
         rm {params.tmpdir}/{wildcards.sample_id}.*.fastq
         """
 
-rule umitools_whitelist_raw:
+## NB: This method only applies to particular samples where the cell-type annotations
+## do not directy correspond with a single sample_id as deposited on the SRA. To be
+## processed by this rule, there must exist a corresponding file under:
+##   metadata/merge/merge-{sample_id}.txt
+def get_merge_targets (wcs):
+    path = "metadata/merge/merge-%s.txt" % wcs.sample_id
+    if os.path.isfile(path):
+        with open(path) as f:
+            sample_ids = f.read().splitlines()
+        return expand("data/fastq/assembled/{sample_id}.assembled.fastq.gz",
+                      sample_id=sample_ids)
+    else:
+        return ""
+
+rule merge_subsamples:
     input:
-        "data/fastq/raw/{sample_id}_R1.fastq.gz"
+        merge="metadata/merge/merge-{sample_id}.txt",
+        fqs=get_merge_targets
     output:
-        "data/barcodes/{sample_id}.whitelist.txt"
-    params:
-        prefix=lambda wcs: "qc/barcodes/%s" % wcs.sample_id
-    resources:
-        mem_mb=16000
-    conda: "envs/umitools.yaml"
+        fq="data/fastq/assembled/{sample_id}.assembled.fastq.gz"
     shell:
         """
-        umi_tools whitelist \\
-          --method=umis \\
-          --extract-method=regex \\
-          --plot-prefix={params.prefix} \\
-          --bc-pattern='(?P<cell_1>.{{6}})(?P<discard_1>CGACTCACTACAGGG){{s<=1}}(?P<cell_2>.{{6}})(?P<discard_2>TCGGTGACACGATCG){{s<=1}}(?P<cell_3>.{{6}})(?P<umi_1>.{{6}})(T{{12}}){{s<=2}}.*' \\
-          --stdin={input} \\
-          --stdout={output}
+        cat {input.fqs} > {output.fq}
+        """
+
+rule extract_whitelist:
+    input:
+        tsv=config['annotsFile']
+    output:
+        txt="data/barcodes/{sample_id}.whitelist.txt"
+    shell:
+        """
+        gzip -cd {input.tsv} |\\
+          awk '{{ if ($2 ~ /^{wildcards.sample_id}$/) print $3 }}' > {output.txt}
         """
 
 rule umitools_extract_assembled:
@@ -114,7 +134,6 @@ rule umitools_extract_assembled:
         """
         umi_tools extract \\
           --filter-cell-barcode \\
-          --error-correct-cell \\
           --extract-method=regex \\
           --bc-pattern='(?P<cell_1>.{{6}})(?P<discard_1>CGACTCACTACAGGG){{s<=1}}(?P<cell_2>.{{6}})(?P<discard_2>TCGGTGACACGATCG){{s<=1}}(?P<cell_3>.{{6}})(?P<umi_1>.{{6}})(T{{12}}){{s<=2}}.*' \\
           --whitelist={input.bx} \\
@@ -144,8 +163,7 @@ rule hisat2_SE:
     input:
         "data/fastq/trimmed/{sample_id}.assembled.clean.fastq.gz"
     output:
-        bam="data/bam/hisat2/{sample_id}.assembled.bam",
-        bai="data/bam/hisat2/{sample_id}.assembled.bam.bai",
+        bam="data/bam/samples/{sample_id}.assembled.bam",
         log="qc/hisat2/{sample_id}.assembled.log"
     params:
         tmpdir=config['tmpdir'],
@@ -162,13 +180,31 @@ rule hisat2_SE:
           --rna-strandness R \\
           --new-summary --summary-file {output.log}
         samtools sort -@ {threads} -T {params.tmpdir}/ -o {output.bam} {params.sam}
-        samtools index -@ {threads} {output.bam}
         rm -f {params.sam}
         """
 
+rule tag_bx_umi:
+    input:
+        bam="data/bam/samples/{sample_id}.assembled.bam",
+        script="scripts/tag_bx_umi.awk"
+    output:
+        bam="data/bam/samples/{sample_id}.tagged.bam",
+        bai="data/bam/samples/{sample_id}.tagged.bam.bai"
+    conda: "envs/hisat2.yaml"
+    shell:
+        """
+        samtools view -h {input.bam} |\\
+          awk -f {input.script} |\\
+          samtools view -b > {output.bam}
+        samtools index {output.bam}
+        """
+
+#rule bam_sample_to_celltype:
+#    output:
+        
 rule cleavage_coverage:
     input:
-        "data/bam/hisat2/{sample_id}.assembled.bam"
+        "data/bam/celltypes/{sample_id}.assembled.bam"
     output:
         neg="data/coverage/{sample_id}.assembled.negative.txt.gz",
         pos="data/coverage/{sample_id}.assembled.positive.txt.gz"
