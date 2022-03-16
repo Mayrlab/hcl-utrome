@@ -11,6 +11,7 @@ barcodeRegex: '(?P<cell_1>.{6})(?P<discard_1>CGACTCACTACAGGG){s<=1}(?P<cell_2>.{
 minReadLength: 21
 
 hisatIndex: "/data/mayrc/db/hg38/grch38_snp_tran/genome_snp_tran"
+chromSizes: "metadata/grch38.chrom.sizes"
 
 radiusGENCODE: 20
 radiusPAS: 20

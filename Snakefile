@@ -31,14 +31,20 @@ message("[INFO] Found %d celltype-sample pairs." % len(celltype_sample_map))
 
 rule all:
     input:
-        expand("data/bam/samples/{sample_id}.tagged.bam",
-               sample_id=samples_subset),
-        expand("data/bam/celltypes/{celltype_id}.bam",
-               celltype_id=list(celltype_sample_map.celltype_id.unique()))
-        # expand("data/kdx/utrome.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.kdx",
-        #        epsilon=[3,5,10], threshold=[10,100,200,1000], version=[39], tpm=[3], likelihood=[0.9999], width=[500]),
-        # expand("data/gff/utrome.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.m{merge}.tsv",
-        #        epsilon=[3,5,10], threshold=[10,100,200,1000], version=[39], tpm=[3], likelihood=[0.9999], width=[500], merge=[200])
+        # expand("data/bam/samples/{sample_id}.tagged.bam",
+        #        sample_id=samples_subset),
+        # expand("data/bigwig/celltypes/{celltype_id}.positive.bw",
+        #        celltype_id=list(celltype_sample_map.celltype_id.unique())),
+        #expand("data/bed/cleavage-sites/utrome.cleavage.e{epsilon}.t{threshold}.bed.gz",
+        #       epsilon=[10], threshold=[3])
+        expand("data/kdx/utrome.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.kdx",
+               epsilon=[10], threshold=[3], version=[39], tpm=[3], likelihood=[0.9999], width=[500]),
+        expand("data/gff/utrome.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.m{merge}.tsv",
+               epsilon=[10], threshold=[3], version=[39], tpm=[3], likelihood=[0.9999], width=[500], merge=[200]),
+        expand("qc/coverage/celltypes_all_sites.e{epsilon}.csv", epsilon=[10]),
+        expand("qc/coverage/celltypes_passing_sites.e{epsilon}.t{threshold}.csv", epsilon=[10], threshold=[3]),
+        expand("qc/coverage/utrome_{status}_sites.e{epsilon}.t{threshold}.csv",
+               status=["merged", "unmerged"], epsilon=[10], threshold=[3])
 
 rule download_fastq:
     output:
@@ -257,12 +263,33 @@ rule merge_celltype_samples:
         samtools index {output.bam}
         """
 
+rule bam_to_bigwig:
+    input:
+        bam="data/bam/celltypes/{celltype_id}.bam",
+        chr_sizes=config['chromSizes']
+    output:
+        bg_pos="data/bedgraph/celltypes/{celltype_id}.positive.bedgraph",
+        bw_pos="data/bigwig/celltypes/{celltype_id}.positive.bw",
+        bg_neg="data/bedgraph/celltypes/{celltype_id}.negative.bedgraph",
+        bw_neg="data/bigwig/celltypes/{celltype_id}.negative.bw"
+    conda: "envs/bedtools.yaml"
+    shell:
+        """
+        scale=$(samtools idxstats {input.bam} | awk '{{ sum += $3 }} END {{ print 1000000 / sum }}')
+        bedtools genomecov -ibam {input.bam} -strand '+' -bg -scale ${{scale}} -split |\\
+          sort -k1,1 -k2,2n > {output.bg_pos}
+        bedGraphToBigWig {output.bg_pos} {input.chr_sizes} {output.bw_pos}
+        bedtools genomecov -ibam {input.bam} -strand '-' -bg -scale ${{scale}} -split |\\
+          sort -k1,1 -k2,2n > {output.bg_neg}
+        bedGraphToBigWig {output.bg_neg} {input.chr_sizes} {output.bw_neg}
+        """
+
 rule cleavage_coverage:
     input:
-        "data/bam/celltypes/{sample_id}.assembled.bam"
+        "data/bam/celltypes/{celltype_id}.bam"
     output:
-        neg="data/coverage/{sample_id}.assembled.negative.txt.gz",
-        pos="data/coverage/{sample_id}.assembled.positive.txt.gz"
+        neg="data/coverage/celltypes/{celltype_id}.negative.txt.gz",
+        pos="data/coverage/celltypes/{celltype_id}.positive.txt.gz"
     conda: "envs/bedtools.yaml"
     shell:
         """
@@ -270,15 +297,50 @@ rule cleavage_coverage:
         bedtools genomecov -dz -5 -strand '+' -ibam {input} | gzip > {output.pos}
         """
 
+rule merge_coverage_celltype:
+    input:
+        cov="data/coverage/celltypes/{celltype_id}.{strand}.txt.gz"
+    output:
+        cov="data/coverage/celltypes/{celltype_id}.{strand}.e{epsilon,\d+}.txt.gz"
+    threads: 8
+    resources:
+        mem_mb=1000
+    conda: "envs/pandas.yaml"
+    script:
+        "scripts/merge_genomecov.py"
+
+rule filter_tpm:
+    input:
+        neg="data/coverage/celltypes/{celltype_id}.negative.e{epsilon}.txt.gz",
+        pos="data/coverage/celltypes/{celltype_id}.positive.e{epsilon}.txt.gz"
+    output:
+        neg="data/coverage/celltypes/{celltype_id}.negative.e{epsilon}.t{threshold}.txt.gz",
+        pos="data/coverage/celltypes/{celltype_id}.positive.e{epsilon}.t{threshold}.txt.gz"
+    wildcard_constraints:
+        epsilon="\d+",
+        threshold="\d+"
+    conda: "envs/bedtools.yaml"
+    shell:
+        """
+        threshold=$(bgzip -cd {input} | awk '{{sum+=$3}}END{{print {wildcards.threshold}*sum/1000000}}')
+        echo "[INFO] {wildcards.threshold} TPM = ${{threshold}} reads" >&2
+        bgzip -cd {input.neg} |\\
+          awk -v OFS='\\t' -v threshold=${{threshold}} '$3 >= threshold' |\\
+          bgzip > {output.neg}
+        bgzip -cd {input.pos} |\\
+          awk -v OFS='\\t' -v threshold=${{threshold}} '$3 >= threshold' |\\
+          bgzip > {output.pos}
+        """
+
 rule sum_coverage:
     input:
-        neg=expand("data/coverage/{sample_id}.assembled.negative.txt.gz",
-                     sample_id=samples_subset),
-        pos=expand("data/coverage/{sample_id}.assembled.positive.txt.gz",
-                     sample_id=samples_subset)
+        neg=expand("data/coverage/celltypes/{celltype_id}.negative.e{{epsilon}}.t{{threshold}}.txt.gz",
+                   celltype_id=celltype_sample_map.celltype_id.unique()),
+        pos=expand("data/coverage/celltypes/{celltype_id}.positive.e{{epsilon}}.t{{threshold}}.txt.gz",
+                   celltype_id=celltype_sample_map.celltype_id.unique())
     output:
-        neg="data/coverage/utrome.assembled.negative.txt.gz",
-        pos="data/coverage/utrome.assembled.positive.txt.gz"
+        neg="data/coverage/utrome.celltypes.negative.e{epsilon}.t{threshold}.txt.gz",
+        pos="data/coverage/utrome.celltypes.positive.e{epsilon}.t{threshold}.txt.gz"
     conda: "envs/bedtools.yaml"
     threads: 4
     resources:
@@ -296,12 +358,14 @@ rule sum_coverage:
           bgzip -@ {threads} > {output.pos}
         """
 
-rule merge_coverage:
+rule merge_coverage_utrome:
     input:
-        cov="data/coverage/utrome.assembled.{strand}.txt.gz"
+        cov="data/coverage/utrome.celltypes.{strand}.e{epsilon}.t{threshold}.txt.gz"
     output:
-        cov="data/coverage/utrome.assembled.{strand}.e{epsilon,\d+}.txt.gz"
-    threads: 16
+        cov="data/coverage/utrome.{strand}.e{epsilon}.t{threshold}.txt.gz"
+    wildcard_constraints:
+        strand="^(negative|positive)$"
+    threads: 8
     resources:
         mem_mb=1000
     conda: "envs/pandas.yaml"
@@ -310,8 +374,8 @@ rule merge_coverage:
 
 rule cov_to_bed:
     input:
-        neg="data/coverage/utrome.assembled.negative.e{epsilon}.txt.gz",
-        pos="data/coverage/utrome.assembled.positive.e{epsilon}.txt.gz"
+        neg="data/coverage/utrome.negative.e{epsilon}.t{threshold}.txt.gz",
+        pos="data/coverage/utrome.positive.e{epsilon}.t{threshold}.txt.gz"
     output:
         bed="data/bed/cleavage-sites/utrome.cleavage.e{epsilon}.t{threshold}.bed.gz",
         tbi="data/bed/cleavage-sites/utrome.cleavage.e{epsilon}.t{threshold}.bed.gz.tbi"
@@ -523,8 +587,8 @@ rule create_chunked_granges:
         extutr3="data/gff/txs.extutr3.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.gff3.gz",
         gencode="data/gff/gencode.v{version}.mRNA_ends_found.gff3.gz"
     output:
-        plus="data/granges/augmented.plus.chunked.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.Rds",
-        minus="data/granges/augmented.minus.chunked.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.Rds",
+        positive="data/granges/augmented.positive.chunked.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.Rds",
+        negative="data/granges/augmented.negative.chunked.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.Rds",
     wildcard_constraints:
         epsilon="\d+",
         threshold="\d+",
@@ -536,11 +600,11 @@ rule create_chunked_granges:
         mem_mb=16000
     script: "scripts/create_chunked_granges.R"
 
-rule truncate_plus_strand:
+rule truncate_positive_strand:
     input:
-        granges="data/granges/augmented.plus.chunked.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.Rds"
+        granges="data/granges/augmented.positive.chunked.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.Rds"
     output:
-        granges="data/granges/utrome.raw.plus.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.Rds"
+        granges="data/granges/utrome.raw.positive.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.Rds"
     wildcard_constraints:
         epsilon="\d+",
         threshold="\d+",
@@ -552,13 +616,13 @@ rule truncate_plus_strand:
     threads: 24
     resources:
         mem_mb=3000
-    script: "scripts/truncate_plus_strand.R"
+    script: "scripts/truncate_positive_strand.R"
 
-rule truncate_minus_strand:
+rule truncate_negative_strand:
     input:
-        granges="data/granges/augmented.minus.chunked.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.Rds"
+        granges="data/granges/augmented.negative.chunked.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.Rds"
     output:
-        granges="data/granges/utrome.raw.minus.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.Rds"
+        granges="data/granges/utrome.raw.negative.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.Rds"
     wildcard_constraints:
         epsilon="\d+",
         threshold="\d+",
@@ -570,12 +634,12 @@ rule truncate_minus_strand:
     threads: 24
     resources:
         mem_mb=3000
-    script: "scripts/truncate_minus_strand.R"
+    script: "scripts/truncate_negative_strand.R"
 
 rule export_unmerged_utrome:
     input:
-        plus="data/granges/utrome.raw.plus.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.Rds",
-        minus="data/granges/utrome.raw.minus.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.Rds"
+        positive="data/granges/utrome.raw.positive.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.Rds",
+        negative="data/granges/utrome.raw.negative.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.Rds"
     output:
         gtf="data/gff/utrome.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.gtf",
         fa="data/gff/utrome.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.fasta.gz"
@@ -679,3 +743,84 @@ rule summarize_hisat_results:
             awk -f {input.script} $log >> {output.csv}
         done
         """
+
+rule count_all_sites_celltypes:
+    input:
+        neg=expand("data/coverage/celltypes/{celltype_id}.negative.e{{epsilon}}.txt.gz",
+                   celltype_id=celltype_sample_map.celltype_id.unique()),
+        pos=expand("data/coverage/celltypes/{celltype_id}.positive.e{{epsilon}}.txt.gz",
+                   celltype_id=celltype_sample_map.celltype_id.unique())
+    output:
+        csv="qc/coverage/celltypes_all_sites.e{epsilon}.csv"
+    conda: "envs/bedtools.yaml"
+    shell:
+        """
+        echo 'celltype_id,strand,cts_total' > {output.csv}
+        for ct in {input.neg}; do
+          ct_id=$(basename $ct | cut -d. -f1);
+          nsites=$(bgzip -cd $ct | wc -l)
+          echo "${{ct_id}},+,${{nsites}}" >> {output.csv}
+        done
+        for ct in {input.pos}; do
+          ct_id=$(basename $ct | cut -d. -f1);
+          nsites=$(bgzip -cd $ct | wc -l)
+          echo "${{ct_id}},-,${{nsites}}" >> {output.csv}
+        done
+        """
+
+rule count_passing_sites_celltypes:
+    input:
+        neg=expand("data/coverage/celltypes/{celltype_id}.negative.e{{epsilon}}.t{{threshold}}.txt.gz",
+                   celltype_id=celltype_sample_map.celltype_id.unique()),
+        pos=expand("data/coverage/celltypes/{celltype_id}.positive.e{{epsilon}}.t{{threshold}}.txt.gz",
+                   celltype_id=celltype_sample_map.celltype_id.unique())
+    output:
+        csv="qc/coverage/celltypes_passing_sites.e{epsilon}.t{threshold}.csv"
+    conda: "envs/bedtools.yaml"
+    shell:
+        """
+        echo 'celltype_id,strand,cts_total' > {output.csv}
+        for ct in {input.neg}; do
+          ct_id=$(basename $ct | cut -d. -f1);
+          nsites=$(bgzip -cd $ct | wc -l)
+          echo "${{ct_id}},+,${{nsites}}" >> {output.csv}
+        done
+        for ct in {input.pos}; do
+          ct_id=$(basename $ct | cut -d. -f1);
+          nsites=$(bgzip -cd $ct | wc -l)
+          echo "${{ct_id}},-,${{nsites}}" >> {output.csv}
+        done
+        """
+
+rule count_unmerged_sites_utrome:
+    input:
+        neg="data/coverage/utrome.celltypes.negative.e{epsilon}.t{threshold}.txt.gz",
+        pos="data/coverage/utrome.celltypes.positive.e{epsilon}.t{threshold}.txt.gz"
+    output:
+        csv="qc/coverage/utrome_unmerged_sites.e{epsilon}.t{threshold}.csv"
+    conda: "envs/bedtools.yaml"
+    shell:
+        """
+        echo 'strand,cts_total' > {output.csv}
+        nsites=$(bgzip -cd {input.neg} | wc -l)
+        echo "+,${{nsites}}" >> {output.csv}
+        nsites=$(bgzip -cd {input.pos} | wc -l)
+        echo "-,${{nsites}}" >> {output.csv}
+        """
+
+rule count_merged_sites_utrome:
+    input:
+        neg="data/coverage/utrome.negative.e{epsilon}.t{threshold}.txt.gz",
+        pos="data/coverage/utrome.positive.e{epsilon}.t{threshold}.txt.gz"
+    output:
+        csv="qc/coverage/utrome_merged_sites.e{epsilon}.t{threshold}.csv"
+    conda: "envs/bedtools.yaml"
+    shell:
+        """
+        echo 'strand,cts_total' > {output.csv}
+        nsites=$(bgzip -cd {input.neg} | wc -l)
+        echo "+,${{nsites}}" >> {output.csv}
+        nsites=$(bgzip -cd {input.pos} | wc -l)
+        echo "-,${{nsites}}" >> {output.csv}
+        """
+

@@ -18,8 +18,8 @@ if (interactive()) {
                                                wildcards='list',
                                                params='list', threads='numeric'))
     snakemake <- Snakemake(
-        input=list(plus="data/granges/utrome.raw.plus.e3.t200.gc39.pas3.f0.9999.w500.Rds",
-                   minus="data/granges/utrome.raw.minus.e3.t200.gc39.pas3.f0.9999.w500.Rds"),
+        input=list(positive="data/granges/utrome.raw.positive.e3.t200.gc39.pas3.f0.9999.w500.Rds",
+                   negative="data/granges/utrome.raw.negative.e3.t200.gc39.pas3.f0.9999.w500.Rds"),
         output=list(gtf="/fscratch/fanslerm/utrome.e3.t200.gc39.pas3.f0.9999.w500.gtf",
                     fa="/fscratch/fanslerm/utrome.e3.t200.gc39.pas3.f0.9999.w500.fa.gz"),
         wildcards=list(epsilon="3", threshold="200", version="39", tpm="3",
@@ -46,20 +46,20 @@ hg38 <- BSgenome.Hsapiens.UCSC.hg38
 ## Load data
 message("Loading truncated transcripts...")
 message("  strand: +")
-gr_plus <- readRDS(snakemake@input$plus) %>%
+gr_positive <- readRDS(snakemake@input$positive) %>%
     `names<-`(NULL)
 
 message("  strand: -")
-gr_minus <- readRDS(snakemake@input$minus) %>%
+gr_negative <- readRDS(snakemake@input$negative) %>%
     `names<-`(NULL)
 
-gr_genes <- filter(c(gr_plus, gr_minus), type == 'gene') %>%
+gr_genes <- filter(c(gr_positive, gr_negative), type == 'gene') %>%
     `names<-`(.$ID)
 
-gr_txs <- filter(c(gr_plus, gr_minus), type == 'transcript') %>%
+gr_txs <- filter(c(gr_positive, gr_negative), type == 'transcript') %>%
     `names<-`(.$ID)
 
-grl_exons <- filter(c(gr_plus, gr_minus), type == 'exon') %>%
+grl_exons <- filter(c(gr_positive, gr_negative), type == 'exon') %>%
     expand_ranges(Parent) %>%
     split(.$Parent) %>%
     as("GRangesList")
@@ -116,14 +116,14 @@ grl_exons_dedup <- grl_exons[!(names(grl_exons) %in% idx_tx_remove)]
 ################################################################################
 
 ## positive strand
-grl_txs_plus <- gr_txs_dedup %>% 
+grl_txs_positive <- gr_txs_dedup %>% 
     filter(strand == "+") %>%
     { unique(.$gene_id) } %>%
     { split(., ceiling(seq_along(.)/CHUNK_SIZE)) } %>%
     lapply(function (gene_ids) { gr_txs_dedup[gr_txs_dedup$gene_id %in% gene_ids] }) %>%
     as("GRangesList")
 
-gr_txs_plus <- bplapply(grl_txs_plus, function (gr) {
+gr_txs_positive <- bplapply(grl_txs_positive, function (gr) {
     gr %>%
         group_by(gene_id) %>%
         mutate(utr_rank=row_number(end)) %>%
@@ -133,15 +133,15 @@ gr_txs_plus <- bplapply(grl_txs_plus, function (gr) {
     as("GRangesList") %>% unlist() %>%
     `names<-`(NULL)
 
-## minus strand
-grl_txs_minus <- gr_txs_dedup %>% 
+## negative strand
+grl_txs_negative <- gr_txs_dedup %>% 
     filter(strand == "-") %>%
     { unique(.$gene_id) } %>%
     { split(., ceiling(seq_along(.)/CHUNK_SIZE)) } %>%
     lapply(function (gene_ids) { gr_txs_dedup[gr_txs_dedup$gene_id %in% gene_ids] }) %>%
     as("GRangesList")
 
-gr_txs_minus <- bplapply(grl_txs_minus, function (gr) {
+gr_txs_negative <- bplapply(grl_txs_negative, function (gr) {
     gr %>%
         group_by(gene_id) %>%
         mutate(utr_rank=row_number(-start)) %>%
@@ -156,7 +156,7 @@ gr_txs_minus <- bplapply(grl_txs_minus, function (gr) {
 ################################################################################
 
 message("Preparing transcripts...")
-gr_utrome_txs <- bind_ranges(gr_txs_plus, gr_txs_minus) %>%
+gr_utrome_txs <- bind_ranges(gr_txs_positive, gr_txs_negative) %>%
     `names<-`(NULL) %>%
     select(type, ID, Parent,
            gene_id, gene_name,
