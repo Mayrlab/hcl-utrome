@@ -12,9 +12,9 @@ if (interactive()) {
                                                wildcards='list',
                                                params='list', threads='numeric'))
     snakemake <- Snakemake(
-        input=list(granges="data/granges/augmented.minus.chunked.e3.t200.gc39.pas3.f0.9999.Rds"),
-        output=list(granges="/fscratch/fanslerm/utrome.raw.minus.Rds"),
-        wildcards=list(epsilon="3", threshold="200", version="39", tpm="3",
+        input=list(granges="data/granges/augmented.negative.chunked.e10.t3.gc39.pas3.f0.9999.Rds"),
+        output=list(granges="/fscratch/fanslerm/utrome.raw.negative.Rds"),
+        wildcards=list(epsilon="3", threshold="3", version="39", tpm="3",
                        likelihood="0.9999", width=500),
         params=list(),
         threads=3
@@ -33,14 +33,14 @@ register(MulticoreParam(as.integer(snakemake@threads)))
 
 ## Load GRangesList
 message("Loading GRangesList...")
-grl_minus <- readRDS(snakemake@input$granges)
+grl_negative <- readRDS(snakemake@input$granges)
 
 ################################################################################
                                         # Adjust Gene Sizes - Positive Strand
 ################################################################################
 
 message("Adjusting transcript sizes...")
-gr_minus_adjusted <- bplapply(grl_minus, function (gr) {
+gr_negative_adjusted <- bplapply(grl_negative, function (gr) {
 
     ## split by feature types
     gr_genes <- filter(gr, type == 'gene')
@@ -106,4 +106,4 @@ gr_minus_adjusted <- bplapply(grl_minus, function (gr) {
 }) %>% as("GRangesList") %>% unlist()
 
 message("Exporting clipped GRanges...")
-saveRDS(gr_minus_adjusted, snakemake@output$granges)
+saveRDS(gr_negative_adjusted, snakemake@output$granges)
