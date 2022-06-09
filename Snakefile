@@ -31,20 +31,30 @@ message("[INFO] Found %d celltype-sample pairs." % len(celltype_sample_map))
 
 rule all:
     input:
-        # expand("data/bam/samples/{sample_id}.tagged.bam",
+        # expand("data/bam/samples/{sample_id}.tagged.strict.bam",
         #        sample_id=samples_subset),
-        # expand("data/bigwig/celltypes/{celltype_id}.positive.bw",
-        #        celltype_id=list(celltype_sample_map.celltype_id.unique())),
-        #expand("data/bed/cleavage-sites/utrome.cleavage.e{epsilon}.t{threshold}.bed.gz",
-        #       epsilon=[10], threshold=[3])
+        expand("data/bigwig/celltypes/{celltype_id}.positive.bw",
+               celltype_id=list(celltype_sample_map.celltype_id.unique())),
+        expand("data/bed/celltypes/celltypes.e{epsilon}.t{threshold}.bed.gz",
+               epsilon=[15,20,25], threshold=[3,5]),
         expand("data/kdx/utrome.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.kdx",
-               epsilon=[10], threshold=[3], version=[39], tpm=[3], likelihood=[0.9999], width=[500]),
+               epsilon=[15,20,25], threshold=[3,5], version=[39], tpm=[3], likelihood=[0.9999], width=[500]),
         expand("data/gff/utrome.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.m{merge}.tsv",
-               epsilon=[10], threshold=[3], version=[39], tpm=[3], likelihood=[0.9999], width=[500], merge=[200]),
-        expand("qc/coverage/celltypes_all_sites.e{epsilon}.csv", epsilon=[10]),
-        expand("qc/coverage/celltypes_passing_sites.e{epsilon}.t{threshold}.csv", epsilon=[10], threshold=[3]),
+               epsilon=[15,20,25], threshold=[3,5], version=[39], tpm=[3], likelihood=[0.9999], width=[500], merge=[200]),
+        expand("data/gff/utrome.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.ipa.tsv",
+               epsilon=[15,20,25], threshold=[3,5], version=[39], tpm=[3], likelihood=[0.9999], width=[500]),
+        expand("qc/coverage/celltypes_all_sites.e{epsilon}.csv", epsilon=[15,20,25]),
+        expand("qc/coverage/celltypes_passing_sites.e{epsilon}.t{threshold}.csv", epsilon=[15,20,25], threshold=[3,5]),
         expand("qc/coverage/utrome_{status}_sites.e{epsilon}.t{threshold}.csv",
-               status=["merged", "unmerged"], epsilon=[10], threshold=[3])
+               status=["merged", "unmerged"], epsilon=[15,20,25], threshold=[3,5]),
+        expand("qc/gff/utrome.site_types.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.csv",
+               epsilon=[15,20,25], threshold=[3,5], version=[39], tpm=[3], likelihood=[0.9999], width=[500]),
+        expand("qc/gff/utrome.utrs_per_gene.unmerged.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.m{merge}.csv",
+               epsilon=[15,20,25], threshold=[3,5], version=[39], tpm=[3], likelihood=[0.9999], width=[500], merge=[200]),
+        expand("qc/gff/utrome.merged_lengths.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.m{merge}.tsv.gz",
+               epsilon=[15,20,25], threshold=[3,5], version=[39], tpm=[3], likelihood=[0.9999], width=[500], merge=[200]),
+        expand("data/granges/utrome_gr_txs.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.Rds",
+               epsilon=[15,20,25], threshold=[3,5], version=[39], tpm=[3], likelihood=[0.9999], width=[500])
 
 rule download_fastq:
     output:
@@ -154,6 +164,11 @@ rule umitools_extract_assembled:
           --stdout={output}
         """
 
+## NB: We found that trimming with errors (-e != 0) results in frequently
+## removing templated portions of transcript ends. The following strategy
+## removes all bases that are 5' (in the read) upstream of any consecutive
+## T of at least 12 or more. This could be further tuned, but we it both
+## prevents over trimming and mostly removes non-templated Ts.
 rule cutadapt_polyT_SE:
     input:
         "data/fastq/extracted/{sample_id}.assembled.bx.fastq.gz"
@@ -167,7 +182,8 @@ rule cutadapt_polyT_SE:
         mem_mb=1000
     shell:
         """
-        cutadapt --cores={threads} --front='T{{100}}' \\
+        cutadapt --cores={threads} \\
+        --front='T{{100}}' -g='T{{12}}' -n 10 -e 0 \\
         --minimum-length={params.min_length} --length-tag='length=' \\
         --output={output} {input}
         """
@@ -358,13 +374,49 @@ rule sum_coverage:
           bgzip -@ {threads} > {output.pos}
         """
 
+rule cov_to_bed_celltypes:
+    input:
+        neg=expand("data/coverage/celltypes/{celltype_id}.negative.e{{epsilon}}.t{{threshold}}.txt.gz",
+                   celltype_id=celltype_sample_map.celltype_id.unique()),
+        pos=expand("data/coverage/celltypes/{celltype_id}.positive.e{{epsilon}}.t{{threshold}}.txt.gz",
+                   celltype_id=celltype_sample_map.celltype_id.unique())
+    output:
+        bed="data/bed/celltypes/celltypes.e{epsilon}.t{threshold}.bed.gz",
+        tbi="data/bed/celltypes/celltypes.e{epsilon}.t{threshold}.bed.gz.tbi"
+    params:
+        tmpdir=config['tmpdir']
+    wildcard_constraints:
+        epsilon="\d+",
+        threshold="\d+"
+    conda: "envs/bedtools.yaml"
+    threads: 1
+    resources:
+        mem_mb=1000
+    shell:
+        """
+        tmpbed=$(mktemp -p {params.tmpdir})
+        for cov in {input.neg}; do
+          celltype=$(basename $cov | awk -v FS='.' '{{print $1}}')
+          bgzip -cd $cov |\\
+            awk -v OFS='\\t' -v ct="$celltype" '{{print $1, $2, $2, ct, $3, \"+\"}}' >> $tmpbed
+        done
+        for cov in {input.pos}; do
+          celltype=$(basename $cov | awk -v FS='.' '{{print $1}}')
+          bgzip -cd $cov |\\
+            awk -v OFS='\\t' -v ct="$celltype" '{{print $1, $2, $2, ct, $3, \"-\"}}' >> $tmpbed
+        done
+        sort -k1,1 -k2,2n $tmpbed | bgzip > {output.bed}
+        tabix -0 -p bed {output.bed}
+        rm -f $tmpbed
+        """
+
 rule merge_coverage_utrome:
     input:
         cov="data/coverage/utrome.celltypes.{strand}.e{epsilon}.t{threshold}.txt.gz"
     output:
         cov="data/coverage/utrome.{strand}.e{epsilon}.t{threshold}.txt.gz"
     wildcard_constraints:
-        strand="^(negative|positive)$"
+        strand="(negative|positive)"
     threads: 8
     resources:
         mem_mb=1000
@@ -701,6 +753,26 @@ rule export_merge_table:
         mem_mb=8000
     script: "scripts/export_merge_table.R"
 
+rule export_intronic_sites:
+    input:
+        utrome="data/gff/utrome.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.gtf.gz",
+        gencode="data/gff/gencode.v{version}.mRNA_ends_found.gff3.gz"
+    output:
+        tsv="data/gff/utrome.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.ipa.tsv"
+    conda: "envs/bioc_3_14.yaml"
+    script: "scripts/export_intronic_sites.R"
+
+
+rule export_granges_txs:
+    input:
+        ipa="data/gff/utrome.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.ipa.tsv",
+        gtf="data/gff/utrome.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.gtf.gz"
+    output:
+        gr="data/granges/utrome_gr_txs.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.Rds"
+    conda: "envs/bioc_3_14.yaml"
+    script: "scripts/export_granges_txs.R"
+
+            
 ################################################################################
 ## Reports
 ################################################################################
@@ -824,3 +896,46 @@ rule count_merged_sites_utrome:
         echo "-,${{nsites}}" >> {output.csv}
         """
 
+rule tabulate_utrome_txs:
+    input:
+        gtf="data/gff/utrome.{settings}.gtf.gz",
+        awk="scripts/tabulate_utrome_txs.awk"
+    output:
+        csv="qc/gff/utrome.site_types.{settings}.csv"
+    shell:
+        """
+        zcat -cd {input.gtf} |\\
+          awk -f {input.awk} > {output.csv}
+        """
+
+rule tabulate_utrome_merges:
+    input:
+        tsv="data/gff/utrome.{settings}.m{merge}.tsv"
+    output:
+        csv_unmerge="qc/gff/utrome.utrs_per_gene.unmerged.{settings}.m{merge}.csv",
+        csv_merge="qc/gff/utrome.utrs_per_gene.merged.{settings}.m{merge}.csv"
+    shell:
+        """
+        tail -n +2 {input.tsv} |\\
+          cut -f 3 | sort | uniq -c |\\
+          awk '{{ print $1 }}' | sort | uniq -c |\\
+          awk '{{ print $2 "," $1 }}' > {output.csv_unmerge}
+        
+        tail -n +2 {input.tsv} |\\
+          cut -f 2,3 | sort | uniq |\\
+          cut -f 2 | sort | uniq -c |\\
+          awk '{{ print $1 }}' | sort | uniq -c |\\
+          awk '{{ print $2 "," $1 }}' > {output.csv_merge}
+        """
+
+rule compute_merge_lengths:
+    input:
+        gtf="data/gff/utrome.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.gtf.gz",
+        tsv="data/gff/utrome.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.m{merge}.tsv"
+    output:
+        tsv="qc/gff/utrome.merged_lengths.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.m{merge}.tsv.gz"
+    threads: 12
+    resources:
+        mem_mb=2000
+    conda: "envs/bioc_3_14.yaml"
+    script: "scripts/compute_merge_lengths.R"
