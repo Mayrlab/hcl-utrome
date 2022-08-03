@@ -29,6 +29,8 @@ message("[INFO] Found %d celltypes." % celltype_sample_map.celltype_id.nunique()
 message("[INFO] Found %d celltype-sample pairs." % len(celltype_sample_map))
 
 
+EPSILONS = [15,20,25,30,40,50]
+THRESHOLDS = [3,5]
 rule all:
     input:
         # expand("data/bam/samples/{sample_id}.tagged.strict.bam",
@@ -36,25 +38,25 @@ rule all:
         expand("data/bigwig/celltypes/{celltype_id}.positive.bw",
                celltype_id=list(celltype_sample_map.celltype_id.unique())),
         expand("data/bed/celltypes/celltypes.e{epsilon}.t{threshold}.bed.gz",
-               epsilon=[15,20,25], threshold=[3,5]),
+               epsilon=EPSILONS, threshold=THRESHOLDS),
         expand("data/kdx/utrome.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.kdx",
-               epsilon=[15,20,25], threshold=[3,5], version=[39], tpm=[3], likelihood=[0.9999], width=[500]),
+               epsilon=EPSILONS, threshold=THRESHOLDS, version=[39], tpm=[3], likelihood=[0.9999], width=[500]),
         expand("data/gff/utrome.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.m{merge}.tsv",
-               epsilon=[15,20,25], threshold=[3,5], version=[39], tpm=[3], likelihood=[0.9999], width=[500], merge=[200]),
+               epsilon=EPSILONS, threshold=THRESHOLDS, version=[39], tpm=[3], likelihood=[0.9999], width=[500], merge=[200]),
         expand("data/gff/utrome.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.ipa.tsv",
-               epsilon=[15,20,25], threshold=[3,5], version=[39], tpm=[3], likelihood=[0.9999], width=[500]),
-        expand("qc/coverage/celltypes_all_sites.e{epsilon}.csv", epsilon=[15,20,25]),
-        expand("qc/coverage/celltypes_passing_sites.e{epsilon}.t{threshold}.csv", epsilon=[15,20,25], threshold=[3,5]),
+               epsilon=EPSILONS, threshold=THRESHOLDS, version=[39], tpm=[3], likelihood=[0.9999], width=[500]),
+        expand("qc/coverage/celltypes_all_sites.e{epsilon}.csv", epsilon=EPSILONS),
+        expand("qc/coverage/celltypes_passing_sites.e{epsilon}.t{threshold}.csv", epsilon=EPSILONS, threshold=THRESHOLDS),
         expand("qc/coverage/utrome_{status}_sites.e{epsilon}.t{threshold}.csv",
-               status=["merged", "unmerged"], epsilon=[15,20,25], threshold=[3,5]),
+               status=["merged", "unmerged"], epsilon=EPSILONS, threshold=THRESHOLDS),
         expand("qc/gff/utrome.site_types.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.csv",
-               epsilon=[15,20,25], threshold=[3,5], version=[39], tpm=[3], likelihood=[0.9999], width=[500]),
+               epsilon=EPSILONS, threshold=THRESHOLDS, version=[39], tpm=[3], likelihood=[0.9999], width=[500]),
         expand("qc/gff/utrome.utrs_per_gene.unmerged.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.m{merge}.csv",
-               epsilon=[15,20,25], threshold=[3,5], version=[39], tpm=[3], likelihood=[0.9999], width=[500], merge=[200]),
+               epsilon=EPSILONS, threshold=THRESHOLDS, version=[39], tpm=[3], likelihood=[0.9999], width=[500], merge=[200]),
         expand("qc/gff/utrome.merged_lengths.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.m{merge}.tsv.gz",
-               epsilon=[15,20,25], threshold=[3,5], version=[39], tpm=[3], likelihood=[0.9999], width=[500], merge=[200]),
+               epsilon=EPSILONS, threshold=THRESHOLDS, version=[39], tpm=[3], likelihood=[0.9999], width=[500], merge=[200]),
         expand("data/granges/utrome_gr_txs.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.Rds",
-               epsilon=[15,20,25], threshold=[3,5], version=[39], tpm=[3], likelihood=[0.9999], width=[500])
+               epsilon=EPSILONS, threshold=THRESHOLDS, version=[39], tpm=[3], likelihood=[0.9999], width=[500])
 
 rule download_fastq:
     output:
