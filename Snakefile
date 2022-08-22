@@ -56,7 +56,15 @@ rule all:
         expand("qc/gff/utrome.merged_lengths.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.m{merge}.tsv.gz",
                epsilon=EPSILONS, threshold=THRESHOLDS, version=[39], tpm=[3], likelihood=[0.9999], width=[500], merge=[200]),
         expand("data/granges/utrome_gr_txs.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.Rds",
-               epsilon=EPSILONS, threshold=THRESHOLDS, version=[39], tpm=[3], likelihood=[0.9999], width=[500])
+               epsilon=EPSILONS, threshold=THRESHOLDS, version=[39], tpm=[3], likelihood=[0.9999], width=[500]),
+        expand("data/gff/df_utrome_{mode}.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.Rds",
+               mode=["txs", "genes"], epsilon=EPSILONS, threshold=THRESHOLDS,
+               version=[39], tpm=[3], likelihood=[0.9999], width=[500])
+
+
+################################################################################
+## DOWNLOADING & PREPROCESSING
+################################################################################
 
 rule download_fastq:
     output:
@@ -775,6 +783,16 @@ rule export_granges_txs:
     script: "scripts/export_granges_txs.R"
 
             
+rule export_annots_dfs:
+    input:
+        ipa="data/gff/utrome.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.ipa.tsv",
+        gtf="data/gff/utrome.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.gtf.gz"
+    output:
+        txs="data/gff/df_utrome_txs.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.Rds",
+        genes="data/gff/df_utrome_genes.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.Rds"
+    conda: "envs/bioc_3_14.yaml"
+    script: "scripts/export_annots_dfs.R"
+
 ################################################################################
 ## Reports
 ################################################################################
