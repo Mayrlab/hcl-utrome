@@ -15,8 +15,8 @@ if (interactive()) {
         input=list(utr3="data/gff/txs.utr3.e3.t200.gc39.pas3.f0.9999.gff3.gz",
                    extutr3="data/gff/txs.extutr3.e3.t200.gc39.pas3.f0.9999.gff3.gz",
                    gencode="data/gff/gencode.v39.mRNA_ends_found.gff3.gz"),
-        output=list(plus="/fscratch/fanslerm/augmented.plus.chunked.e3.t200.gc39.pas3.f0.9999.Rds",
-                    minus="/fscratch/fanslerm/augmented.minus.chunked.e3.t200.gc39.pas3.f0.9999.Rds",),
+        output=list(positive="/fscratch/fanslerm/augmented.positive.chunked.e3.t200.gc39.pas3.f0.9999.Rds",
+                    negative="/fscratch/fanslerm/augmented.negative.chunked.e3.t200.gc39.pas3.f0.9999.Rds",),
         wildcards=list(epsilon="3", threshold="200", version="39", tpm="3", likelihood="0.9999"),
         params=list(),
         threads=1
@@ -30,47 +30,49 @@ if (interactive()) {
 ## parameters
 CHUNK_SIZE=100
 
-cat("Loading GENCODE...\n")
+message("Loading GENCODE...")
 gr_gencode <- import(snakemake@input$gencode, genome='hg38') %>%
     keepStandardChromosomes(pruning.mode="coarse") %>%
     filter(gene_type == 'protein_coding')
 
-cat("Loading upstream transcripts...\n")
+message("Loading upstream transcripts...")
 gr_upstream <- import(snakemake@input$utr3, genome='hg38') %>%
-    keepStandardChromosomes(pruning.mode="coarse")
+    keepStandardChromosomes(pruning.mode="coarse") %>%
+    filter(gene_type == 'protein_coding')
 
-cat("Loading extended transcripts...\n")
+message("Loading extended transcripts...")
 gr_downstream <- import(snakemake@input$extutr3, genome='hg38') %>%
-    keepStandardChromosomes(pruning.mode="coarse")
+    keepStandardChromosomes(pruning.mode="coarse") %>%
+    filter(gene_type == 'protein_coding')
 
-cat("Merging plus strand gene models...\n")
-gr_plus <- bind_ranges(gr_gencode, gr_upstream, gr_downstream) %>%
+message("Merging positive strand gene models...")
+gr_positive <- bind_ranges(gr_gencode, gr_upstream, gr_downstream) %>%
     filter(strand == "+") %>%
     filter(type == 'gene' | (type %in% c('transcript', 'exon') & transcript_type == 'protein_coding'))
 
-cat("Chunking plus strand gene models...\n")
-grl_plus <- gr_plus$gene_id %>%
+message("Chunking positive strand gene models...")
+grl_positive <- gr_positive$gene_id %>%
     unique %>%
     { split(., ceiling(seq_along(.)/CHUNK_SIZE)) } %>%
-    lapply(function (gene_ids) { gr_plus[gr_plus$gene_id %in% gene_ids] }) %>%
+    lapply(function (gene_ids) { gr_positive[gr_positive$gene_id %in% gene_ids] }) %>%
     as("GRangesList")
 
-cat("Exporting chunked plus strand GRangesList...\n")
-saveRDS(grl_plus, snakemake@output$plus)
+message("Exporting chunked positive strand GRangesList...")
+saveRDS(grl_positive, snakemake@output$positive)
 
-cat("Merging minus strand gene models...\n")
-gr_minus <- bind_ranges(gr_gencode, gr_upstream, gr_downstream) %>%
+message("Merging negative strand gene models...")
+gr_negative <- bind_ranges(gr_gencode, gr_upstream, gr_downstream) %>%
     filter(strand == "-") %>%
     filter(type == 'gene' | (type %in% c('transcript', 'exon') & transcript_type == 'protein_coding'))
 
-cat("Chunking minus strand gene models...\n")
-grl_minus <- gr_minus$gene_id %>%
+message("Chunking negative strand gene models...")
+grl_negative <- gr_negative$gene_id %>%
     unique %>%
     { split(., ceiling(seq_along(.)/CHUNK_SIZE)) } %>%
-    lapply(function (gene_ids) { gr_minus[gr_minus$gene_id %in% gene_ids] }) %>%
+    lapply(function (gene_ids) { gr_negative[gr_negative$gene_id %in% gene_ids] }) %>%
     as("GRangesList")
 
-cat("Exporting chunked minus strand GRangesList...\n")
-saveRDS(grl_minus, snakemake@output$minus)
+message("Exporting chunked negative strand GRangesList...")
+saveRDS(grl_negative, snakemake@output$negative)
 
-cat("Done.\n")
+message("Done.")
