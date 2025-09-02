@@ -2,7 +2,9 @@
 
 ## Overview
 This repository contains a pipeline to reprocess [the Human Cell Landscape](https://doi.org/10.1038/s41586-020-2157-4) data for cleavage 
-site identification as reported in [Fansler et al., *bioRxiv*, 2023](https://www.biorxiv.org/content/10.1101/2021.11.22.469635v2).
+site identification as reported in:
+
+Fansler, M.M., Mitschka, S. & Mayr, C. Quantifying 3′UTR length from scRNA-seq data reveals changes independent of gene expression. *Nat Commun* **15**, 4050 (2024). [https://doi.org/10.1038/s41467-024-48254-9](https://doi.org/10.1038/s41467-024-48254-9)
 
 > 🤔 **Important Note:** This pipeline is provided for the scientific record, not necessarily with reuse in mind. However, we made some engineering improvements when writing the analogous pipeline for mouse data (https://github.com/Mayrlab/mca-utrome) making it more geared toward reuse. In particular, we moved what are really pipeline parameters out of the `Snakefile` and into the `config.yaml` where they really belong. If considering rerunning this pipeline or applying it to other Microwell-seq data, you may want to start from that version instead, or at least incorporate those pipeline improvements here. Also, be mindful that both of these are resource heavy pipelines - we may be able to provide useful intermediate files to expediate generating output variants that do not require rerunning alignments ([open an Issue](https://github.com/Mayrlab/hcl-utrome/issues)).
 
