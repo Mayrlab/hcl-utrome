@@ -1,4 +1,4 @@
-tmpdir: "/fscratch/fanslerm"
+tmpdir: "/Users/mfansler/scratch/hcl-utrome"
 
 metadataFile: "metadata/hcl-sra-run-table.csv"
 annotsFile: "metadata/hcl-cell-annots.clean.tsv.gz"
@@ -18,3 +18,24 @@ radiusPAS: 20
 
 extUTR3: 5000
 extUTR5: 1000
+
+epsilon:
+  - 30
+
+threshold:
+  - 5
+
+gencodeVersion:
+  - 44
+
+polyASiteTPM:
+  - 3
+
+minLikelihood:
+  - 0.9999
+
+width:
+  - 500
+
+mergeDistance:
+  - 200

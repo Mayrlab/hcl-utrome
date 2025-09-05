@@ -29,41 +29,47 @@ message("[INFO] Found %d celltypes." % celltype_sample_map.celltype_id.nunique()
 message("[INFO] Found %d celltype-sample pairs." % len(celltype_sample_map))
 
 
-EPSILONS = [15,20,25,30,40,50]
-THRESHOLDS = [3,5]
+EPSILON = list(config['epsilon'])
+THRESHOLD = list(config['threshold'])
+GC_VERSION = list(config['gencodeVersion'])
+PAS_TPM = list(config['polyASiteTPM'])
+LIKELIHOOD = list(config['minLikelihood'])
+WIDTH = list(config['width'])
+MERGE = list(config['mergeDistance'])
+
 rule all:
     input:
         # expand("data/bam/samples/{sample_id}.tagged.strict.bam",
         #        sample_id=samples_subset),
-        expand("data/bigwig/celltypes/{celltype_id}.positive.bw",
-               celltype_id=list(celltype_sample_map.celltype_id.unique())),
-        expand("data/bed/celltypes/celltypes.e{epsilon}.t{threshold}.bed.gz",
-               epsilon=EPSILONS, threshold=THRESHOLDS),
+        # expand("data/bigwig/celltypes/{celltype_id}.positive.bw",
+        #        celltype_id=list(celltype_sample_map.celltype_id.unique())),
+        # expand("data/bed/celltypes/celltypes.e{epsilon}.t{threshold}.bed.gz",
+        #        epsilon=EPSILON, threshold=THRESHOLD),
         expand("data/kdx/utrome.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.kdx",
-               epsilon=EPSILONS, threshold=THRESHOLDS, version=[39], tpm=[3], likelihood=[0.9999], width=[500]),
+               epsilon=EPSILON, threshold=THRESHOLD, version=GC_VERSION, tpm=PAS_TPM, likelihood=LIKELIHOOD, width=WIDTH),
         expand("data/gff/utrome.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.m{merge}.tsv",
-               epsilon=EPSILONS, threshold=THRESHOLDS, version=[39], tpm=[3], likelihood=[0.9999], width=[500], merge=[200]),
+               epsilon=EPSILON, threshold=THRESHOLD, version=GC_VERSION, tpm=PAS_TPM, likelihood=LIKELIHOOD, width=WIDTH, merge=MERGE),
         expand("data/gff/utrome.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.ipa.tsv",
-               epsilon=EPSILONS, threshold=THRESHOLDS, version=[39], tpm=[3], likelihood=[0.9999], width=[500]),
-        expand("qc/coverage/celltypes_all_sites.e{epsilon}.csv", epsilon=EPSILONS),
-        expand("qc/coverage/celltypes_passing_sites.e{epsilon}.t{threshold}.csv", epsilon=EPSILONS, threshold=THRESHOLDS),
-        expand("qc/coverage/utrome_{status}_sites.e{epsilon}.t{threshold}.csv",
-               status=["merged", "unmerged"], epsilon=EPSILONS, threshold=THRESHOLDS),
+               epsilon=EPSILON, threshold=THRESHOLD, version=GC_VERSION, tpm=PAS_TPM, likelihood=LIKELIHOOD, width=WIDTH),
+        # expand("qc/coverage/celltypes_all_sites.e{epsilon}.csv", epsilon=EPSILON),
+        # expand("qc/coverage/celltypes_passing_sites.e{epsilon}.t{threshold}.csv", epsilon=EPSILON, threshold=THRESHOLD),
+        # expand("qc/coverage/utrome_{status}_sites.e{epsilon}.t{threshold}.csv",
+        #        status=["merged", "unmerged"], epsilon=EPSILON, threshold=THRESHOLD),
         expand("qc/gff/utrome.site_types.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.csv",
-               epsilon=EPSILONS, threshold=THRESHOLDS, version=[39], tpm=[3], likelihood=[0.9999], width=[500]),
+               epsilon=EPSILON, threshold=THRESHOLD, version=GC_VERSION, tpm=PAS_TPM, likelihood=LIKELIHOOD, width=WIDTH),
         expand("qc/gff/utrome.utrs_per_gene.unmerged.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.m{merge}.csv",
-               epsilon=EPSILONS, threshold=THRESHOLDS, version=[39], tpm=[3], likelihood=[0.9999], width=[500], merge=[200]),
+               epsilon=EPSILON, threshold=THRESHOLD, version=GC_VERSION, tpm=PAS_TPM, likelihood=LIKELIHOOD, width=WIDTH, merge=MERGE),
         expand("qc/gff/utrome.merged_lengths.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.m{merge}.tsv.gz",
-               epsilon=EPSILONS, threshold=THRESHOLDS, version=[39], tpm=[3], likelihood=[0.9999], width=[500], merge=[200]),
+               epsilon=EPSILON, threshold=THRESHOLD, version=GC_VERSION, tpm=PAS_TPM, likelihood=LIKELIHOOD, width=WIDTH, merge=MERGE),
         expand("data/granges/utrome_gr_txs.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.Rds",
-               epsilon=EPSILONS, threshold=THRESHOLDS, version=[39], tpm=[3], likelihood=[0.9999], width=[500]),
+               epsilon=EPSILON, threshold=THRESHOLD, version=GC_VERSION, tpm=PAS_TPM, likelihood=LIKELIHOOD, width=WIDTH),
         expand("data/gff/df_utrome_{mode}.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.Rds",
-               mode=["txs", "genes"], epsilon=EPSILONS, threshold=THRESHOLDS,
-               version=[39], tpm=[3], likelihood=[0.9999], width=[500])
+               mode=["txs", "genes"], epsilon=EPSILON, threshold=THRESHOLD,
+               version=GC_VERSION, tpm=PAS_TPM, likelihood=LIKELIHOOD, width=WIDTH)
 
 
 ################################################################################
-## DOWNLOADING & PREPROCESSING
+## DOWNLOADING
 ################################################################################
 
 rule download_fastq:
@@ -90,6 +96,54 @@ rule download_fastq:
 
         ## clean up
         rm $tmp_r1 $tmp_r2
+        """
+
+rule download_polyASite_atlas:
+    output:
+        atlas="data/cleavage-sites/polyAsite.atlas.tsv.gz"
+    params:
+        url="https://polyasite.unibas.ch/download/atlas/2.0/GRCh38.96/atlas.clusters.2.0.GRCh38.96.tsv.gz"
+    shell:
+        """
+        wget -O {output.atlas} '{params.url}'
+        """
+
+rule download_gencode_gff:
+    output:
+        gff="data/gff/gencode.v{version}.annotation.gff3.gz"
+    params:
+        url_base="ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/",
+        url_file=lambda wcs: "release_%s/gencode.v%s.annotation.gff3.gz" % (wcs.version, wcs.version)
+    wildcard_constraints:
+        version='\d+'
+    shell:
+        """
+        wget -O {output.gff} '{params.url_base}{params.url_file}'
+        """
+
+################################################################################
+## PREPROCESSING
+################################################################################
+
+rule filter_gencode_mRNA_ends:
+    input:
+        gff="data/gff/gencode.v{version}.annotation.gff3.gz"
+    output:
+        gff="data/gff/gencode.v{version}.mRNA_ends_found.gff3.gz",
+        tbi="data/gff/gencode.v{version}.mRNA_ends_found.gff3.gz.tbi"
+    wildcard_constraints:
+        version='\d+'
+    conda: "envs/bedtools.yaml"
+    threads: 4
+    shell:
+        """
+        bgzip -cd {input.gff} |\\
+          awk '$0 !~ /^#/' |\\
+          awk '$0 !~ /mRNA_end_NF/' |\\
+          sort --parallel={threads} -S4G -k1,1 -k4,4n |\\
+          bgzip -@ {threads} -c > {output.gff}
+
+        tabix {output.gff}
         """
 
 ruleorder: merge_subsamples > pear_merge
@@ -487,50 +541,6 @@ rule cleanUpdTSeq_filter:
     conda: "envs/bioc_3_14.yaml"
     script:
         "scripts/filter_cleavage_sites.R"
-
-rule download_polyASite_atlas:
-    output:
-        atlas="data/cleavage-sites/polyAsite.atlas.tsv.gz"
-    params:
-        url="https://polyasite.unibas.ch/download/atlas/2.0/GRCh38.96/atlas.clusters.2.0.GRCh38.96.tsv.gz"
-    shell:
-        """
-        wget -O {output.atlas} '{params.url}'
-        """
-
-rule download_gencode_gff:
-    output:
-        gff="data/gff/gencode.v{version}.annotation.gff3.gz"
-    params:
-        url_base="ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/",
-        url_file=lambda wcs: "release_%s/gencode.v%s.annotation.gff3.gz" % (wcs.version, wcs.version)
-    wildcard_constraints:
-        version='\d+'
-    shell:
-        """
-        wget -O {output.gff} '{params.url_base}{params.url_file}'
-        """
-
-rule filter_gencode_mRNA_ends:
-    input:
-        gff="data/gff/gencode.v{version}.annotation.gff3.gz"
-    output:
-        gff="data/gff/gencode.v{version}.mRNA_ends_found.gff3.gz",
-        tbi="data/gff/gencode.v{version}.mRNA_ends_found.gff3.gz.tbi"
-    wildcard_constraints:
-        version='\d+'
-    conda: "envs/bedtools.yaml"
-    threads: 4
-    shell:
-        """
-        bgzip -cd {input.gff} |\\
-          awk '$0 !~ /^#/' |\\
-          awk '$0 !~ /mRNA_end_NF/' |\\
-          sort --parallel={threads} -S4G -k1,1 -k4,4n |\\
-          bgzip -@ {threads} -c > {output.gff}
-
-        tabix {output.gff}
-        """
         
 rule filter_validated_sites:
     input:
