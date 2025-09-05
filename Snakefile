@@ -521,7 +521,7 @@ rule cleanUpdTSeq_classify:
     wildcard_constraints:
         epsilon="\d+",
         threshold="\d+"
-    conda: "envs/bioc_3_14.yaml"
+    conda: "envs/bioc_3_20.yaml"
     resources:
         mem_mb=4000
     threads: 24
@@ -538,7 +538,7 @@ rule cleanUpdTSeq_filter:
         epsilon="\d+",
         threshold="\d+",
         likelihood="0.\d+"
-    conda: "envs/bioc_3_14.yaml"
+    conda: "envs/bioc_3_20.yaml"
     script:
         "scripts/filter_cleavage_sites.R"
         
@@ -555,7 +555,7 @@ rule filter_validated_sites:
         version="\d+"
     params:
         radius=config['radiusGENCODE']
-    conda: "envs/bioc_3_14.yaml"
+    conda: "envs/bioc_3_20.yaml"
     script:
         "scripts/filter_validated_sites.R"
 
@@ -573,7 +573,7 @@ rule filter_supported_sites:
         tpm="\d+"
     params:
         radius=config['radiusPAS']
-    conda: "envs/bioc_3_14.yaml"
+    conda: "envs/bioc_3_20.yaml"
     script:
         "scripts/filter_supported_sites.R"
 
@@ -590,7 +590,7 @@ rule filter_likely_sites:
         version="\d+",
         tpm="\d+",
         likelihood="0.\d+"
-    conda: "envs/bioc_3_14.yaml"
+    conda: "envs/bioc_3_20.yaml"
     script:
         "scripts/filter_likely_sites.R"
 
@@ -611,7 +611,7 @@ rule export_cleavage_sites:
     params:
         ext_utr3=config['extUTR3'],
         ext_utr5=config['extUTR5']
-    conda: "envs/bioc_3_14.yaml"
+    conda: "envs/bioc_3_20.yaml"
     script:
         "scripts/export_cleavage_sites.R"
 
@@ -628,7 +628,7 @@ rule augment_transcriptome_utr3:
         version="\d+",
         tpm="\d+",
         likelihood = "0.\d+"
-    conda: "envs/bioc_3_14.yaml"
+    conda: "envs/bioc_3_20.yaml"
     resources:
         mem_mb=16000
     script: "scripts/augment_transcriptome_utr3.R"
@@ -648,7 +648,7 @@ rule augment_transcriptome_extutr3:
         likelihood = "0.\d+"
     params:
         ext_utr3=config['extUTR3']
-    conda: "envs/bioc_3_14.yaml"
+    conda: "envs/bioc_3_20.yaml"
     resources:
         mem_mb=16000
     script: "scripts/augment_transcriptome_extutr3.R"
@@ -667,7 +667,7 @@ rule create_chunked_granges:
         version="\d+",
         tpm="\d+",
         likelihood="0.\d+"
-    conda: "envs/bioc_3_14.yaml"
+    conda: "envs/bioc_3_20.yaml"
     resources:
         mem_mb=16000
     script: "scripts/create_chunked_granges.R"
@@ -684,7 +684,7 @@ rule truncate_positive_strand:
         tpm="\d+",
         likelihood="0.\d+",
         width="\d+"
-    conda: "envs/bioc_3_14.yaml"
+    conda: "envs/bioc_3_20.yaml"
     threads: 24
     resources:
         mem_mb=3000
@@ -702,7 +702,7 @@ rule truncate_negative_strand:
         tpm="\d+",
         likelihood="0.\d+",
         width="\d+"
-    conda: "envs/bioc_3_14.yaml"
+    conda: "envs/bioc_3_20.yaml"
     threads: 24
     resources:
         mem_mb=3000
@@ -722,7 +722,7 @@ rule export_unmerged_utrome:
         tpm="\d+",
         likelihood="0.\d+",
         width="\d+"
-    conda: "envs/bioc_3_14.yaml"
+    conda: "envs/bioc_3_20.yaml"
     threads: 24
     resources:
         mem_mb=2000
@@ -768,7 +768,7 @@ rule export_merge_table:
         tsv="data/gff/utrome.{settings}.m{merge}.tsv"
     params:
         genome="hg38"
-    conda: "envs/bioc_3_14.yaml"
+    conda: "envs/bioc_3_20.yaml"
     resources:
         mem_mb=8000
     script: "scripts/export_merge_table.R"
@@ -779,7 +779,7 @@ rule export_intronic_sites:
         gencode="data/gff/gencode.v{version}.mRNA_ends_found.gff3.gz"
     output:
         tsv="data/gff/utrome.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.ipa.tsv"
-    conda: "envs/bioc_3_14.yaml"
+    conda: "envs/bioc_3_20.yaml"
     script: "scripts/export_intronic_sites.R"
 
 
@@ -789,7 +789,7 @@ rule export_granges_txs:
         gtf="data/gff/utrome.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.gtf.gz"
     output:
         gr="data/granges/utrome_gr_txs.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.Rds"
-    conda: "envs/bioc_3_14.yaml"
+    conda: "envs/bioc_3_20.yaml"
     script: "scripts/export_granges_txs.R"
 
             
@@ -800,7 +800,7 @@ rule export_annots_dfs:
     output:
         txs="data/gff/df_utrome_txs.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.Rds",
         genes="data/gff/df_utrome_genes.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.Rds"
-    conda: "envs/bioc_3_14.yaml"
+    conda: "envs/bioc_3_20.yaml"
     script: "scripts/export_annots_dfs.R"
 
 ################################################################################
@@ -967,5 +967,5 @@ rule compute_merge_lengths:
     threads: 12
     resources:
         mem_mb=2000
-    conda: "envs/bioc_3_14.yaml"
+    conda: "envs/bioc_3_20.yaml"
     script: "scripts/compute_merge_lengths.R"

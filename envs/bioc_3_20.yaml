@@ -1,0 +1,15 @@
+name: bioc_3_20
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - r-base=4.4
+  - r-tidyverse
+  - bioconductor-cleanupdtseq=1.44
+  - bioconductor-rtracklayer=1.66
+  - bioconductor-biocparallel=1.40
+  - bioconductor-bsgenome.hsapiens.ucsc.hg38=1.4
+  - bioconductor-genomicfeatures=1.58
+  - bioconductor-plyranges=1.26
+  - bioconductor-txcutr=1.12
