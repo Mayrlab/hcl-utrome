@@ -157,7 +157,7 @@ rule pear_merge:
         tmpdir=config['tmpdir'] + "/pear",
         min_length=54+21,
         max_pval=0.0001
-    conda: "envs/pear.yaml"
+    #conda: "envs/pear_20250905.yaml"
     threads: 12
     resources:
         mem_mb=1000
