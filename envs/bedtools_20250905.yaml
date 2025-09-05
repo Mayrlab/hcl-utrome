@@ -1,0 +1,11 @@
+name: bedtools
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - bedtools=2.31
+  - datamash=1.9
+  - htslib=1.22
+  - samtools=1.22
+  - ucsc-bedgraphtobigwig

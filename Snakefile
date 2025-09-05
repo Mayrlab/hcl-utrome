@@ -79,7 +79,7 @@ rule download_fastq:
     params:
         srr=lambda wcs: metadata.Run[wcs.sample_id],
         tmpdir=config['tmpdir']
-    conda: "envs/sratools.yaml"
+    conda: "envs/sratools_20250905.yaml"
     threads: 8
     shell:
         """
@@ -115,7 +115,7 @@ rule download_gencode_gff:
         url_base="ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/",
         url_file=lambda wcs: "release_%s/gencode.v%s.annotation.gff3.gz" % (wcs.version, wcs.version)
     wildcard_constraints:
-        version='\d+'
+        version=r'\d+'
     shell:
         """
         wget -O {output.gff} '{params.url_base}{params.url_file}'
@@ -132,8 +132,8 @@ rule filter_gencode_mRNA_ends:
         gff="data/gff/gencode.v{version}.mRNA_ends_found.gff3.gz",
         tbi="data/gff/gencode.v{version}.mRNA_ends_found.gff3.gz.tbi"
     wildcard_constraints:
-        version='\d+'
-    conda: "envs/bedtools.yaml"
+        version=r'\d+'
+    conda: "envs/bedtools_20250905.yaml"
     threads: 4
     shell:
         """
@@ -216,7 +216,7 @@ rule umitools_extract_assembled:
         temp("data/fastq/extracted/{sample_id}.assembled.bx.fastq.gz")
     resources:
         mem_mb=16000
-    conda: "envs/umitools.yaml"
+    conda: "envs/umitools_20250905.yaml"
     shell:
         """
         umi_tools extract \\
@@ -240,7 +240,7 @@ rule cutadapt_polyT_SE:
         "data/fastq/trimmed/{sample_id}.assembled.clean.fastq.gz"
     params:
         min_length=config['minReadLength']
-    conda: "envs/cutadapt.yaml"
+    conda: "envs/cutadapt_20250905.yaml"
     threads: 8
     resources:
         mem_mb=1000
@@ -262,7 +262,7 @@ rule hisat2_SE:
         tmpdir=config['tmpdir'],
         idx=config['hisatIndex'],
         sam=config['tmpdir'] + "/{sample_id}.assembled.sam"
-    conda: "envs/hisat2.yaml"
+    conda: "envs/hisat2_20250905.yaml"
     threads: 16
     resources:
         mem_mb=1000
@@ -283,7 +283,7 @@ rule tag_bx_umi:
     output:
         bam="data/bam/samples/{sample_id}.tagged.bam",
         bai="data/bam/samples/{sample_id}.tagged.bam.bai"
-    conda: "envs/hisat2.yaml"
+    conda: "envs/hisat2_20250905.yaml"
     shell:
         """
         samtools view -h {input.bam} |\\
@@ -298,9 +298,9 @@ rule extract_celltype_sample_bxs:
     output:
         bxs="data/barcodes/celltypes/{cluster_id}-{celltype}/{cluster_id}-{celltype}.{sample_id}.bxs.txt"
     wildcard_constraints:
-        cluster_id="\d+",
-        celltype="[^.]+",
-        sample_id="[^.]+(\.\d+)?"
+        cluster_id=r'\d+',
+        celltype=r'[^.]+',
+        sample_id=r'[^.]+(\.\d+)?'
     shell:
         """
         gzip -cd {input.tsv} |\\
@@ -314,10 +314,10 @@ rule filter_celltype_sample:
     output:
         bam=temp("data/bam/celltypes/{cluster_id}-{celltype}/{cluster_id}-{celltype}.{sample_id}.bam")
     wildcard_constraints:
-        cluster_id="\d+",
-        celltype="[^.]+",
-        sample_id="[^.]+(\.\d+)?"
-    conda: "envs/hisat2.yaml"
+        cluster_id=r'\d+',
+        celltype=r'[^.]+',
+        sample_id=r'[^.]+(\.\d+)?'
+    conda: "envs/hisat2_20250905.yaml"
     shell:
         """
         samtools view -D CB:{input.bxs} -o {output.bam} {input.bam}
@@ -335,8 +335,8 @@ rule merge_celltype_samples:
         bam="data/bam/celltypes/{celltype_id}.bam",
         bai="data/bam/celltypes/{celltype_id}.bam.bai"
     wildcard_constraints:
-        celltype_id="\d+-[^.]+"
-    conda: "envs/hisat2.yaml"
+        celltype_id=r'\d+-[^.]+'
+    conda: "envs/hisat2_20250905.yaml"
     shell:
         """
         samtools merge -o {output.bam} {input.bams}
@@ -352,7 +352,7 @@ rule bam_to_bigwig:
         bw_pos="data/bigwig/celltypes/{celltype_id}.positive.bw",
         bg_neg="data/bedgraph/celltypes/{celltype_id}.negative.bedgraph",
         bw_neg="data/bigwig/celltypes/{celltype_id}.negative.bw"
-    conda: "envs/bedtools.yaml"
+    conda: "envs/bedtools_20250905.yaml"
     shell:
         """
         scale=$(samtools idxstats {input.bam} | awk '{{ sum += $3 }} END {{ print 1000000 / sum }}')
@@ -370,7 +370,7 @@ rule cleavage_coverage:
     output:
         neg="data/coverage/celltypes/{celltype_id}.negative.txt.gz",
         pos="data/coverage/celltypes/{celltype_id}.positive.txt.gz"
-    conda: "envs/bedtools.yaml"
+    conda: "envs/bedtools_20250905.yaml"
     shell:
         """
         bedtools genomecov -dz -5 -strand '-' -ibam {input} | gzip > {output.neg}
@@ -381,11 +381,13 @@ rule merge_coverage_celltype:
     input:
         cov="data/coverage/celltypes/{celltype_id}.{strand}.txt.gz"
     output:
-        cov="data/coverage/celltypes/{celltype_id}.{strand}.e{epsilon,\d+}.txt.gz"
+        cov="data/coverage/celltypes/{celltype_id}.{strand}.e{epsilon}.txt.gz"
+    wildcard_constraints:
+        epsilon=r'\d+'
     threads: 8
     resources:
         mem_mb=1000
-    conda: "envs/pandas.yaml"
+    conda: "envs/pandas_20250905.yaml"
     script:
         "scripts/merge_genomecov.py"
 
@@ -397,9 +399,9 @@ rule filter_tpm:
         neg="data/coverage/celltypes/{celltype_id}.negative.e{epsilon}.t{threshold}.txt.gz",
         pos="data/coverage/celltypes/{celltype_id}.positive.e{epsilon}.t{threshold}.txt.gz"
     wildcard_constraints:
-        epsilon="\d+",
-        threshold="\d+"
-    conda: "envs/bedtools.yaml"
+        epsilon=r'\d+',
+        threshold=r'\d+'
+    conda: "envs/bedtools_20250905.yaml"
     shell:
         """
         threshold=$(bgzip -cd {input} | awk '{{sum+=$3}}END{{print {wildcards.threshold}*sum/1000000}}')
@@ -421,7 +423,7 @@ rule sum_coverage:
     output:
         neg="data/coverage/utrome.celltypes.negative.e{epsilon}.t{threshold}.txt.gz",
         pos="data/coverage/utrome.celltypes.positive.e{epsilon}.t{threshold}.txt.gz"
-    conda: "envs/bedtools.yaml"
+    conda: "envs/bedtools_20250905.yaml"
     threads: 4
     resources:
         mem_mb=1000
@@ -450,9 +452,9 @@ rule cov_to_bed_celltypes:
     params:
         tmpdir=config['tmpdir']
     wildcard_constraints:
-        epsilon="\d+",
-        threshold="\d+"
-    conda: "envs/bedtools.yaml"
+        epsilon=r'\d+',
+        threshold=r'\d+'
+    conda: "envs/bedtools_20250905.yaml"
     threads: 1
     resources:
         mem_mb=1000
@@ -484,7 +486,7 @@ rule merge_coverage_utrome:
     threads: 8
     resources:
         mem_mb=1000
-    conda: "envs/pandas.yaml"
+    conda: "envs/pandas_20250905.yaml"
     script:
         "scripts/merge_genomecov.py"
 
@@ -498,9 +500,9 @@ rule cov_to_bed:
     params:
         tmpdir=config['tmpdir']
     wildcard_constraints:
-        epsilon="\d+",
-        threshold="\d+"
-    conda: "envs/bedtools.yaml"
+        epsilon=r'\d+',
+        threshold=r'\d+'
+    conda: "envs/bedtools_20250905.yaml"
     shell:
         """
         tmpbed=$(mktemp -p {params.tmpdir})
@@ -519,8 +521,8 @@ rule cleanUpdTSeq_classify:
     output:
         probs="data/cleavage-sites/utrome.classification.e{epsilon}.t{threshold}.tsv.gz"
     wildcard_constraints:
-        epsilon="\d+",
-        threshold="\d+"
+        epsilon=r'\d+',
+        threshold=r'\d+'
     conda: "envs/bioc_3_20.yaml"
     resources:
         mem_mb=4000
@@ -535,9 +537,9 @@ rule cleanUpdTSeq_filter:
     output:
         bed="data/bed/cleavage-sites/utrome.cleavage.e{epsilon}.t{threshold}.f{likelihood}.bed.gz"
     wildcard_constraints:
-        epsilon="\d+",
-        threshold="\d+",
-        likelihood="0.\d+"
+        epsilon=r'\d+',
+        threshold=r'\d+',
+        likelihood=r'\d+'
     conda: "envs/bioc_3_20.yaml"
     script:
         "scripts/filter_cleavage_sites.R"
@@ -550,9 +552,9 @@ rule filter_validated_sites:
         validated="data/bed/cleavage-sites/utrome.validated.e{epsilon}.t{threshold}.gc{version}.bed.gz",
         unvalidated="data/bed/cleavage-sites/utrome.unvalidated.e{epsilon}.t{threshold}.gc{version}.bed.gz"
     wildcard_constraints:
-        epsilon="\d+",
-        threshold="\d+",
-        version="\d+"
+        epsilon=r'\d+',
+        threshold=r'\d+',
+        version=r'\d+'
     params:
         radius=config['radiusGENCODE']
     conda: "envs/bioc_3_20.yaml"
@@ -567,10 +569,10 @@ rule filter_supported_sites:
         supported="data/bed/cleavage-sites/utrome.supported.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.bed.gz",
         unsupported="data/bed/cleavage-sites/utrome.unsupported.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.bed.gz"
     wildcard_constraints:
-        epsilon="\d+",
-        threshold="\d+",
-        version="\d+",
-        tpm="\d+"
+        epsilon=r'\d+',
+        threshold=r'\d+',
+        version=r'\d+',
+        tpm=r'\d+'
     params:
         radius=config['radiusPAS']
     conda: "envs/bioc_3_20.yaml"
@@ -585,11 +587,11 @@ rule filter_likely_sites:
         likely="data/bed/cleavage-sites/utrome.likely.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.bed.gz",
         unlikely="data/bed/cleavage-sites/utrome.unlikely.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.bed.gz"
     wildcard_constraints:
-        epsilon="\d+",
-        threshold="\d+",
-        version="\d+",
-        tpm="\d+",
-        likelihood="0.\d+"
+        epsilon=r'\d+',
+        threshold=r'\d+',
+        version=r'\d+',
+        tpm=r'\d+',
+        likelihood=r'0.\d+'
     conda: "envs/bioc_3_20.yaml"
     script:
         "scripts/filter_likely_sites.R"
@@ -603,11 +605,11 @@ rule export_cleavage_sites:
         utr3="data/bed/cleavage-sites/utrome.utr3.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.bed.gz",
         extutr3="data/bed/cleavage-sites/utrome.extutr3.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.bed.gz"
     wildcard_constraints:
-        epsilon="\d+",
-        threshold="\d+",
-        version="\d+",
-        tpm="\d+",
-        likelihood="0.\d+"
+        epsilon=r'\d+',
+        threshold=r'\d+',
+        version=r'\d+',
+        tpm=r'\d+',
+        likelihood=r'0.\d+'
     params:
         ext_utr3=config['extUTR3'],
         ext_utr5=config['extUTR5']
@@ -623,11 +625,11 @@ rule augment_transcriptome_utr3:
         gff="data/gff/txs.utr3.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.gff3.gz",
         gtf="data/gff/txs.utr3.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.gtf.gz"
     wildcard_constraints:
-        epsilon = "\d+",
-        threshold = "\d+",
-        version="\d+",
-        tpm="\d+",
-        likelihood = "0.\d+"
+        epsilon=r'\d+',
+        threshold=r'\d+',
+        version=r'\d+',
+        tpm=r'\d+',
+        likelihood=r'0.\d+'
     conda: "envs/bioc_3_20.yaml"
     resources:
         mem_mb=16000
@@ -641,11 +643,11 @@ rule augment_transcriptome_extutr3:
         gff="data/gff/txs.extutr3.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.gff3.gz",
         gtf="data/gff/txs.extutr3.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.gtf.gz"
     wildcard_constraints:
-        epsilon = "\d+",
-        threshold = "\d+",
-        version="\d+",
-        tpm="\d+",
-        likelihood = "0.\d+"
+        epsilon=r'\d+',
+        threshold=r'\d+',
+        version=r'\d+',
+        tpm=r'\d+',
+        likelihood=r'0.\d+'
     params:
         ext_utr3=config['extUTR3']
     conda: "envs/bioc_3_20.yaml"
@@ -662,11 +664,11 @@ rule create_chunked_granges:
         positive="data/granges/augmented.positive.chunked.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.Rds",
         negative="data/granges/augmented.negative.chunked.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.Rds",
     wildcard_constraints:
-        epsilon="\d+",
-        threshold="\d+",
-        version="\d+",
-        tpm="\d+",
-        likelihood="0.\d+"
+        epsilon=r'\d+',
+        threshold=r'\d+',
+        version=r'\d+',
+        tpm=r'\d+',
+        likelihood=r'0.\d+'
     conda: "envs/bioc_3_20.yaml"
     resources:
         mem_mb=16000
@@ -678,12 +680,12 @@ rule truncate_positive_strand:
     output:
         granges="data/granges/utrome.raw.positive.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.Rds"
     wildcard_constraints:
-        epsilon="\d+",
-        threshold="\d+",
-        version="\d+",
-        tpm="\d+",
-        likelihood="0.\d+",
-        width="\d+"
+        epsilon=r'\d+',
+        threshold=r'\d+',
+        version=r'\d+',
+        tpm=r'\d+',
+        likelihood=r'0.\d+',
+        width=r'\d+'
     conda: "envs/bioc_3_20.yaml"
     threads: 24
     resources:
@@ -696,12 +698,12 @@ rule truncate_negative_strand:
     output:
         granges="data/granges/utrome.raw.negative.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.Rds"
     wildcard_constraints:
-        epsilon="\d+",
-        threshold="\d+",
-        version="\d+",
-        tpm="\d+",
-        likelihood="0.\d+",
-        width="\d+"
+        epsilon=r'\d+',
+        threshold=r'\d+',
+        version=r'\d+',
+        tpm=r'\d+',
+        likelihood=r'0.\d+',
+        width=r'\d+'
     conda: "envs/bioc_3_20.yaml"
     threads: 24
     resources:
@@ -716,12 +718,12 @@ rule export_unmerged_utrome:
         gtf="data/gff/utrome.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.gtf",
         fa="data/gff/utrome.e{epsilon}.t{threshold}.gc{version}.pas{tpm}.f{likelihood}.w{width}.fasta.gz"
     wildcard_constraints:
-        epsilon="\d+",
-        threshold="\d+",
-        version="\d+",
-        tpm="\d+",
-        likelihood="0.\d+",
-        width="\d+"
+        epsilon=r'\d+',
+        threshold=r'\d+',
+        version=r'\d+',
+        tpm=r'\d+',
+        likelihood=r'0.\d+',
+        width=r'\d+'
     conda: "envs/bioc_3_20.yaml"
     threads: 24
     resources:
@@ -734,7 +736,7 @@ rule sort_utrome:
     output:
         gtf="data/gff/utrome.{settings}.gtf.gz",
         idx="data/gff/utrome.{settings}.gtf.gz.tbi"
-    conda: "envs/bedtools.yaml"
+    conda: "envs/bedtools_20250905.yaml"
     threads: 4
     resources:
         mem_mb=6000
@@ -854,7 +856,7 @@ rule count_all_sites_celltypes:
                    celltype_id=celltype_sample_map.celltype_id.unique())
     output:
         csv="qc/coverage/celltypes_all_sites.e{epsilon}.csv"
-    conda: "envs/bedtools.yaml"
+    conda: "envs/bedtools_20250905.yaml"
     shell:
         """
         echo 'celltype_id,strand,cts_total' > {output.csv}
@@ -878,7 +880,7 @@ rule count_passing_sites_celltypes:
                    celltype_id=celltype_sample_map.celltype_id.unique())
     output:
         csv="qc/coverage/celltypes_passing_sites.e{epsilon}.t{threshold}.csv"
-    conda: "envs/bedtools.yaml"
+    conda: "envs/bedtools_20250905.yaml"
     shell:
         """
         echo 'celltype_id,strand,cts_total' > {output.csv}
@@ -900,7 +902,7 @@ rule count_unmerged_sites_utrome:
         pos="data/coverage/utrome.celltypes.positive.e{epsilon}.t{threshold}.txt.gz"
     output:
         csv="qc/coverage/utrome_unmerged_sites.e{epsilon}.t{threshold}.csv"
-    conda: "envs/bedtools.yaml"
+    conda: "envs/bedtools_20250905.yaml"
     shell:
         """
         echo 'strand,cts_total' > {output.csv}
@@ -916,7 +918,7 @@ rule count_merged_sites_utrome:
         pos="data/coverage/utrome.positive.e{epsilon}.t{threshold}.txt.gz"
     output:
         csv="qc/coverage/utrome_merged_sites.e{epsilon}.t{threshold}.csv"
-    conda: "envs/bedtools.yaml"
+    conda: "envs/bedtools_20250905.yaml"
     shell:
         """
         echo 'strand,cts_total' > {output.csv}
