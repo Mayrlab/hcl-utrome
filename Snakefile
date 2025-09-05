@@ -936,7 +936,7 @@ rule tabulate_utrome_txs:
         csv="qc/gff/utrome.site_types.{settings}.csv"
     shell:
         """
-        zcat -cd {input.gtf} |\\
+        gzip -cd {input.gtf} |\\
           awk -f {input.awk} > {output.csv}
         """
 
