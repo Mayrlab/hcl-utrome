@@ -26,7 +26,9 @@ threshold:
   - 5
 
 gencodeVersion:
+  - 42
   - 44
+  - 48
 
 polyASiteTPM:
   - 3
